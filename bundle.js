@@ -2,6 +2,11 @@ let canvas, ctx;
 
 let ship, roids, level, text, textAlpha, lives, score, scoreHigh;
 
+const fxLaser = new Sound('sounds/laser.m4a', 5, 0.05);
+const fxExplode = new Sound('sounds/explode.m4a', 1, 0.1);
+const fxHit = new Sound('sounds/hit.m4a', 5, 0.3);
+const fxThrust = new Sound('sounds/thrust.m4a', 1, 0.3);
+
 const FPS = 30; // frames per sec
 const FRICTION = 0.7;   // friction coefficient of space (0 = no friction, 1 = lots of friction)
 const GAME_LIVES = 3;
@@ -27,6 +32,7 @@ const TEXT_FADE_TIME = 2.5;  // duration of text fade in seconds
 const TEXT_SIZE = 40;  // font size of text in pixels
 const SHOW_BOUNDINGS = false;  // show or hide collision boundaries
 const SHOW_CENTER_DOT = false;  // show or hide center dot
+const SOUND_ON = true;
 const SAVE_KEY_SCORE = 'highscore'; // key in localStorage to save high score
 
 window.onload = function () {
@@ -111,6 +117,7 @@ function update() {
     if (ship.thrusting) {
         ship.thrust.x += SHIP_THRUST * Math.cos(ship.a) / FPS;
         ship.thrust.y -= SHIP_THRUST * Math.sin(ship.a) / FPS;
+        fxThrust.play();
 
         // draw thruster
         if (!exploding && blinkOn) {
@@ -138,6 +145,7 @@ function update() {
     } else {
         ship.thrust.x -= FRICTION * ship.thrust.x / FPS;
         ship.thrust.y -= FRICTION * ship.thrust.y / FPS;
+        fxThrust.stop();
     }
 
 
@@ -502,7 +510,7 @@ function distBetweenPoints(x1, y1, x2, y2) {
 
 function explodeShip() {
     ship.explodeTime = SHIP_EXPLODE_DUR * FPS
-
+    fxExplode.play();
 }
 
 function shootLaser() {
@@ -515,7 +523,8 @@ function shootLaser() {
             yv: -LASER_SPD * Math.sin(ship.a) / FPS,
             dist: 0,
             explodeTime: 0,
-        })
+        });
+        fxLaser.play();
     }
 
     // prevent ship from shooting multiple lasers at once
@@ -554,5 +563,27 @@ function destroyAsteroid(index) {
         level++;
         newLevel();
     }
+    fxHit.play();
 }
 
+
+function Sound(src, maxStreams = 1, volume = 1.0) {
+    this.streamNum = 0;
+    this.streams = [];
+    for (let i = 0; i < maxStreams; i++) {
+        this.streams.push(new Audio(src))
+        this.streams[i].volume = volume;
+    }
+
+    this.play = function() {
+        if (SOUND_ON) {
+            this.streamNum = (this.streamNum + 1) % maxStreams;
+            this.streams[this.streamNum].play();
+        }
+    }
+
+    this.stop = function () {
+        this.streams[this.streamNum].pause();
+        this.streams[this.streamNum].currentTime = 0;
+    }
+}
