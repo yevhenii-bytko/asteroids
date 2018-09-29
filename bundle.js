@@ -1,6 +1,6 @@
 // GLOBAL VARIABLES
 let canvas, ctx;
-let rocketShip, asteroidsBelt;
+let rocketShip, asteroidsBelt, interactDetector;
 
 // CONSTANTS
 const FPS = 30;
@@ -17,6 +17,12 @@ const ASTEROIDS_MIN_SPEED = 4;
 const ASTEROIDS_MAX_SPEED = 40;
 const ASTEROIDS_VERTICES_NUMBER = 10;
 const JAGGEDNESS = 0.4
+
+const TEST = false;
+const DESTRUCT_NUMBER = 2;
+const EXPLODE_DURATION = 0.3;
+const BLINKER_DURATION = 0.3;
+const INVISIBLE_DURATION = 3;
 
 // DATA STRUCTURES
 function RocketShip(shape, rotation, thrust) {
@@ -67,6 +73,21 @@ function Direction(point) {
     this.point = point;
 }
 
+function InteractDetector(explosion, blinker) {
+    this.explosion = explosion;
+    this.blinker = blinker;
+}
+
+function Explosion(time) {
+    this.time = time;
+    this.isExplplode = false;
+}
+
+function Blinker(time, number) {
+    this.time = time;
+    this.number = number;
+}
+
 // ENTRY POINT
 window.onload = function () {
     canvas = document.getElementById("canvas");
@@ -82,12 +103,14 @@ window.onload = function () {
 function startNewGame() {
     initRocketShipBaseInstance();
     initAsteroidsBeltInstance(ASTEROIDS_NUMBER);
+    initInteractDetectorInstance();
 }
 
 function update() {
     drawSpaceBg();
-    updateRocketShipPhysicsAndRender();
     updateAsteroidsBeltPhysicsAndRender();
+    updateRocketShipPhysicsAndRender();
+    drawTestElements(rocketShip, asteroidsBelt);
 }
 
 // KEY-LISTENERS
@@ -131,10 +154,15 @@ function initRocketShipBaseInstance() {
 
 function updateRocketShipPhysicsAndRender() {
     handleRocketShipPosition();
-    if (isRocketShipThrust()) {
-        drawThrustTriangles(rocketShip);
+    if (!isExplosionMode() && !isBlinkerOff()) {
+        if (isRocketShipThrust()) {
+            drawThrustTriangles(rocketShip);
+        }
+        drawRocketShipTriangle(rocketShip);
+    } else if (isExplosionMode()) {
+        drawExplosion(rocketShip);
     }
-    drawRocketShipTriangle(rocketShip);
+    updateModesLogic();
 }
 
 function handleRocketShipPosition() {
@@ -158,7 +186,10 @@ function moveRocketShip() {
 function thrustRocketShip() {
     let thrustPoint = rocketShip.thrust.point;
     const angle = rocketShip.rotation.angle;
-    if (isRocketShipThrust()) {
+    if (isExplosionMode()) {
+        thrustPoint.x =  0;
+        thrustPoint.y = 0;
+    } else if (isRocketShipThrust()) {
         thrustPoint.x +=  THRUST_FORCE * Math.cos(angle) / FPS;
         thrustPoint.y -= THRUST_FORCE * Math.sin(angle) / FPS;
     } else {
@@ -167,11 +198,11 @@ function thrustRocketShip() {
     }
 }
 
-function  turnRocketShipLeft() {
-    rocketShip.rotation.increment = convertToRadians(-ROCKET_SHIP_TURN_ANGLE) / FPS;
+function turnRocketShipLeft() {
+    rocketShip.rotation.increment = convertToRadians(ROCKET_SHIP_TURN_ANGLE) / FPS;
 }
 
-function  turnRocketShipRight() {
+function turnRocketShipRight() {
     rocketShip.rotation.increment = convertToRadians(-ROCKET_SHIP_TURN_ANGLE) / FPS;
 }
 
@@ -251,6 +282,89 @@ function accelerateAsteroids(accelerationNumber = 0) {
         direction.point.x = direction.point.x + accelerationNumber;
         direction.point.y = direction.point.y + accelerationNumber;
     }
+}
+
+function destructAsteroid(index) {
+    const prevPoint = asteroidsBelt[index].polygon.point;
+    const prevRadius = asteroidsBelt[index].polygon.radius;
+    for (let i = 0; i < DESTRUCT_NUMBER; i++) {
+        if (prevRadius >= BASE_SIZE) {
+            const point = new Point(
+                prevPoint.x + getRandomNumberSign(getRandomInt(0, prevRadius)),
+                prevPoint.y + getRandomNumberSign(getRandomInt(0, prevRadius)),
+            );
+            const radius = prevRadius / 2;
+            asteroidsBelt.push(createRandomAsteroid(point, radius));
+        }
+    }
+    asteroidsBelt.splice(index, 1);
+}
+
+function initInteractDetectorInstance() {
+    interactDetector = new InteractDetector(
+        new Explosion(EXPLODE_DURATION * FPS),
+        new Blinker(BLINKER_DURATION * FPS, Math.ceil(INVISIBLE_DURATION / BLINKER_DURATION) )
+    )
+}
+
+function updateModesLogic() {
+    if (isExplosionMode()) {
+        handleExplosionMode();
+    } else if (isBlinkerMode()) {
+        handleBlinkerMode();
+    } else {
+        detectRocketShipCollision();
+    }
+}
+
+function detectRocketShipCollision() {
+    const point = rocketShip.shape.point;
+    const radius = rocketShip.shape.radius;
+    const index = findCollisionAsteroidIndex(point, radius);
+    if (index !== -1) {
+        interactDetector.explosion.isExplplode = true;
+        destructAsteroid(index);
+    }
+}
+
+function findCollisionAsteroidIndex(point, radius) {
+    for (let i = 0; i < asteroidsBelt.length; i++) {
+        const asteroidPoint = asteroidsBelt[i].polygon.point;
+        const asteroidRadius = asteroidsBelt[i].polygon.radius;
+        if (getDistanceBetweenPoints(point, asteroidPoint) < radius + asteroidRadius) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+function handleExplosionMode() {
+    if (interactDetector.explosion.time > 0) {
+        interactDetector.explosion.time--;
+    } else {
+        initRocketShipBaseInstance();
+        initInteractDetectorInstance();
+    }
+}
+
+function handleBlinkerMode() {
+    interactDetector.blinker.time--;
+    if (interactDetector.blinker.time === 0) {
+        interactDetector.blinker.time = BLINKER_DURATION * FPS;
+        interactDetector.blinker.number--;
+    }
+}
+
+function isBlinkerMode() {
+    return interactDetector.explosion.isExplplode === false && interactDetector.blinker.number > 0
+}
+
+function isExplosionMode() {
+    return interactDetector.explosion.isExplplode === true;
+}
+
+function isBlinkerOff() {
+    return interactDetector.blinker.number % 2 !== 0;
 }
 
 // RENDER FUNCTIONS
@@ -336,6 +450,53 @@ function drawAsteroidPolygon(asteroid) {
             point.y + radius * offsets[i] * Math.sin(angle + i * 2 * Math.PI / verticesNumber)
         );
     }
+    ctx.closePath();
+    ctx.stroke();
+}
+
+function drawExplosion(rocketShip) {
+    const point = rocketShip.shape.point;
+    const params = [
+        ['darkred', 1],
+        ['red', 0.8],
+        ['orange', 0.6],
+        ['yellow', 0.4],
+        ['white', 0.2]
+    ];
+    for (let i = 0; i < params.length; i++) {
+        ctx.fillStyle = params[i][0];
+        ctx.beginPath();
+        ctx.arc(point.x, point.y, BASE_SIZE * params[i][1], 0, Math.PI * 2);
+        ctx.closePath();
+        ctx.fill();
+    }
+}
+
+function drawTestElements(rocketShip, asteroidsBelt) {
+    if (TEST) {
+        drawDot(rocketShip.shape);
+        drawCircle(rocketShip.shape);
+        for (let i = 0; i < asteroidsBelt.length; i++) {
+            drawCircle(asteroidsBelt[i].polygon);
+        }
+    }
+}
+
+function drawDot(shape) {
+    const point = shape.point;
+    ctx.fillStyle = 'red';
+    ctx.beginPath();
+    ctx.arc(point.x, point.y, 1, 0, 2 * Math.PI);
+    ctx.closePath();
+    ctx.fill();
+}
+
+function drawCircle(shape) {
+    const point = shape.point;
+    const radius = shape.radius;
+    ctx.strokeStyle = 'green';
+    ctx.beginPath();
+    ctx.arc(point.x, point.y, radius, 0, 2 * Math.PI);
     ctx.closePath();
     ctx.stroke();
 }
