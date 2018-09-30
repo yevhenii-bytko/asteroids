@@ -1,6 +1,6 @@
 // GLOBAL VARIABLES
 let canvas, ctx;
-let rocketShip, asteroidsBelt, interactDetector;
+let rocketShip, asteroidsBelt, interactDetector, lasersFlow;
 
 // CONSTANTS
 const FPS = 30;
@@ -20,9 +20,14 @@ const JAGGEDNESS = 0.4
 
 const TEST = false;
 const DESTRUCT_NUMBER = 2;
-const EXPLODE_DURATION = 0.3;
+const EXPLODE_SHIP_DURATION = 0.3;
+const EXPLODE_LASER_DURATION = 0.1;
 const BLINKER_DURATION = 0.3;
 const INVISIBLE_DURATION = 3;
+
+const LASER_MAX_AMOUNT = 10;
+const LASER_SPEED = 500;
+const LASER_DISTANCE = 0.6;
 
 // DATA STRUCTURES
 function RocketShip(shape, rotation, thrust) {
@@ -36,6 +41,19 @@ function Asteroid(polygon, rotation, direction) {
     this.rotation = rotation;
     this.direction = direction;
     this.offsets = [];
+}
+
+function Laser(shape, direction) {
+    this.shape = shape;
+    this.direction = direction;
+    this.distance = 0;
+    this.time = 0;
+    this.isHit = false;
+}
+
+function LasersFlow() {
+    this.flow = [];
+    this.canShoot = true;
 }
 
 function Polygon(point, radius, verticesNumber) {
@@ -104,18 +122,23 @@ function startNewGame() {
     initRocketShipBaseInstance();
     initAsteroidsBeltInstance(ASTEROIDS_NUMBER);
     initInteractDetectorInstance();
+    initLasersFlowInstance();
 }
 
 function update() {
     drawSpaceBg();
     updateAsteroidsBeltPhysicsAndRender();
     updateRocketShipPhysicsAndRender();
+    updateLasersFlowPhysicsAndRender();
     drawTestElements(rocketShip, asteroidsBelt);
 }
 
 // KEY-LISTENERS
 function keyDown(e) {
     switch (e.keyCode) {
+        case 32:    // space bar (shoot laser)
+            shootLaser();
+            break;
         case 37:    // left arrow (rotate ship left)
             turnRocketShipLeft();
             break;
@@ -130,6 +153,9 @@ function keyDown(e) {
 
 function keyUp(e) {
     switch (e.keyCode) {
+        case 32:    // space bar (stop shoot)
+            denyShooting();
+            break;
         case 37:    // left arrow (stop rotating left)
         case 39:    // right arrow (stop rotating right)
             resetRocketShipRotationIncrement();
@@ -302,7 +328,7 @@ function destructAsteroid(index) {
 
 function initInteractDetectorInstance() {
     interactDetector = new InteractDetector(
-        new Explosion(EXPLODE_DURATION * FPS),
+        new Explosion(EXPLODE_SHIP_DURATION * FPS),
         new Blinker(BLINKER_DURATION * FPS, Math.ceil(INVISIBLE_DURATION / BLINKER_DURATION) )
     )
 }
@@ -365,6 +391,125 @@ function isExplosionMode() {
 
 function isBlinkerOff() {
     return interactDetector.blinker.number % 2 !== 0;
+}
+
+function initLasersFlowInstance() {
+    lasersFlow = new LasersFlow();
+}
+
+function shootLaser() {
+    if (isCanShoot()) {
+        lasersFlow.flow.push(createLaser(rocketShip));
+        denyShooting();
+    }
+}
+
+function createLaser(rocketShip) {
+    const point = rocketShip.shape.point;
+    const radius = rocketShip.shape.radius;
+    const angle = rocketShip.rotation.angle;
+    return new Laser(
+        new Shape(
+            new Point(
+                point.x + 4 / 3 * radius * Math.cos(angle),
+                point.y - 4 / 3 * radius * Math.sin(angle)
+            ),
+            BASE_SIZE / 20,
+        ), new Direction(
+            new Point(
+                LASER_SPEED * Math.cos(angle) / FPS,
+                -LASER_SPEED * Math.sin(angle) / FPS,
+            )
+        )
+    )
+}
+
+function updateLasersFlowPhysicsAndRender() {
+    moveLasers();
+    calculateLasersDistance();
+    handleAllowShooting();
+    filterLasersExisting();
+    handleLasersHits();
+    drawLasersFlow();
+}
+
+function moveLasers() {
+    for (let i = 0; i < lasersFlow.flow.length; i++) {
+        const laser = lasersFlow.flow[i];
+        const point = laser.shape.point;
+        const radius = laser.shape.radius;
+        const direction = laser.direction;
+        if (!laser.isHit) {
+            point.x += direction.point.x;
+            point.y += direction.point.y;
+            handleEdgeOfScreen(point, radius);
+        }
+    }
+}
+
+function calculateLasersDistance() {
+    for (let i = 0; i < lasersFlow.flow.length; i++) {
+        const laser = lasersFlow.flow[i];
+        const point = laser.direction.point;
+        laser.distance += Math.sqrt(
+            Math.pow(point.x, 2) +
+            Math.pow(point.y, 2)
+        );
+    }
+}
+
+function handleAllowShooting() {
+    for (let i = 0; i < lasersFlow.flow.length; i++) {
+        const laser = lasersFlow.flow[i];
+        if (laser.distance <= BASE_SIZE) {
+            return
+        }
+    }
+    allowShooting();
+}
+
+function filterLasersExisting() {
+    const temp = [];
+    for (let i = 0; i < lasersFlow.flow.length; i++) {
+        const laser = lasersFlow.flow[i];
+        if (laser.distance < LASER_DISTANCE * canvas.width) {
+            temp.push(laser);
+        }
+    }
+    lasersFlow.flow = temp;
+}
+
+function handleLasersHits() {
+    for (let i = 0; i < lasersFlow.flow.length; i++) {
+        const laser = lasersFlow.flow[i];
+        const point = laser.shape.point;
+        const radius = laser.shape.radius;
+        const collisionIndex = findCollisionAsteroidIndex(point, radius);
+        if (laser.isHit) {
+            laser.time--;
+            if (laser.time === 0) {
+                lasersFlow.flow.splice(i, 1);
+            }
+        }
+        if (collisionIndex !== -1) {
+            laser.isHit = true;
+            laser.time = EXPLODE_LASER_DURATION * FPS;
+            destructAsteroid(collisionIndex);
+        }
+    }
+
+}
+
+function allowShooting() {
+    lasersFlow.canShoot = true;
+}
+
+function denyShooting() {
+    lasersFlow.canShoot = false;
+}
+
+function isCanShoot() {
+    return lasersFlow.canShoot && lasersFlow.flow.length <= LASER_MAX_AMOUNT && !interactDetector.explosion.isExplplode;
 }
 
 // RENDER FUNCTIONS
@@ -467,6 +612,45 @@ function drawExplosion(rocketShip) {
         ctx.fillStyle = params[i][0];
         ctx.beginPath();
         ctx.arc(point.x, point.y, BASE_SIZE * params[i][1], 0, Math.PI * 2);
+        ctx.closePath();
+        ctx.fill();
+    }
+}
+
+function drawLasersFlow() {
+    for (let i = 0; i < lasersFlow.flow.length; i++) {
+        const laser = lasersFlow.flow[i];
+        if (laser.isHit) {
+            drawLaserHit(laser);
+        } else {
+            drawLaser(laser);
+        }
+
+    }
+}
+
+function drawLaser(laser) {
+    const point = laser.shape.point;
+    const radius = laser.shape.radius;
+    ctx.fillStyle = 'red';
+    ctx.beginPath();
+    ctx.arc(point.x, point.y, radius, 0, Math.PI * 2);
+    ctx.closePath();
+    ctx.fill();
+}
+
+function drawLaserHit(laser) {
+    const params = [
+        ['orange', 6],
+        ['salmon', 4],
+        ['pink', 2]
+    ];
+    for (let i = 0; i < params.length; i++) {
+        const point = laser.shape.point;
+        const radius = laser.shape.radius;
+        ctx.fillStyle = params[i][0];
+        ctx.beginPath();
+        ctx.arc(point.x, point.y, radius * params[i][1], 0, Math.PI * 2);
         ctx.closePath();
         ctx.fill();
     }
