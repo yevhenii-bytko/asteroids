@@ -1,6 +1,6 @@
 // GLOBAL VARIABLES
 let canvas, ctx;
-let rocketShip, asteroidsBelt, interactDetector, lasersFlow;
+let rocketShip, asteroidsBelt, interactDetector, lasersFlow, level;
 
 // CONSTANTS
 const FPS = 30;
@@ -12,7 +12,7 @@ const ROCKET_SHIP_TURN_ANGLE = 360;
 const THRUST_FORCE = 5;
 const FRICTION = 0.5;
 
-const ASTEROIDS_NUMBER = 3;
+const ASTEROIDS_NUMBER = 1;
 const ASTEROIDS_MIN_SPEED = 4;
 const ASTEROIDS_MAX_SPEED = 40;
 const ASTEROIDS_VERTICES_NUMBER = 10;
@@ -29,7 +29,33 @@ const LASER_MAX_AMOUNT = 10;
 const LASER_SPEED = 500;
 const LASER_DISTANCE = 0.6;
 
+const START_LEVEL_NUMBER = 0;
+const LEVEL_MESSAGE = "LEVEL";
+const LEVEL_ALPHA_TIME = 2.5;
+
 // DATA STRUCTURES
+function Level(number, textProperties) {
+    this.number = number;
+    this.textProperties = textProperties;
+}
+
+function TextProperties(message, position, style) {
+    this.message = message;
+    this.position = position;
+    this.style = style;
+}
+
+function Position(point, align, baseLine) {
+    this.point = point;
+    this.align = align;
+    this.baseLine = baseLine;
+}
+
+function Style(size, opacity) {
+    this.size = size;
+    this.opacity = opacity;
+}
+
 function RocketShip(shape, rotation, thrust) {
     this.shape = shape;
     this.rotation = rotation;
@@ -120,6 +146,7 @@ window.onload = function () {
 
 function startNewGame() {
     initRocketShipBaseInstance();
+    initLevelInstance();
     initAsteroidsBeltInstance(ASTEROIDS_NUMBER);
     initInteractDetectorInstance();
     initLasersFlowInstance();
@@ -127,6 +154,7 @@ function startNewGame() {
 
 function update() {
     drawSpaceBg();
+    updateLevelPhysicsAndRender();
     updateAsteroidsBeltPhysicsAndRender();
     updateRocketShipPhysicsAndRender();
     updateLasersFlowPhysicsAndRender();
@@ -262,8 +290,8 @@ function createRandomAsteroid(point, radius) {
         new Rotation(getRandomInt(0, ROCKET_SHIP_TURN_ANGLE)),
         new Direction(
             new Point(
-                getRandomNumberSign(getRandomInt(ASTEROIDS_MIN_SPEED, ASTEROIDS_MAX_SPEED)),
-                getRandomNumberSign(getRandomInt(ASTEROIDS_MIN_SPEED, ASTEROIDS_MAX_SPEED))
+                getRandomNumberSign(getRandomInt(ASTEROIDS_MIN_SPEED, ASTEROIDS_MAX_SPEED) + level.number),
+                getRandomNumberSign(getRandomInt(ASTEROIDS_MIN_SPEED, ASTEROIDS_MAX_SPEED) + level.number)
             )
         )
     );
@@ -288,7 +316,6 @@ function updateAsteroidsBeltPhysicsAndRender() {
 
 function handleAsteroidsPositions() {
     moveAsteroids();
-    accelerateAsteroids();
 }
 
 function moveAsteroids() {
@@ -299,14 +326,6 @@ function moveAsteroids() {
         point.x += direction.point.x / FPS;
         point.y += direction.point.y / FPS;
         handleEdgeOfScreen(point, radius);
-    }
-}
-
-function accelerateAsteroids(accelerationNumber = 0) {
-    for (let i = 0; i < asteroidsBelt.length; i++) {
-        const direction = asteroidsBelt[i].direction;
-        direction.point.x = direction.point.x + accelerationNumber;
-        direction.point.y = direction.point.y + accelerationNumber;
     }
 }
 
@@ -512,6 +531,40 @@ function isCanShoot() {
     return lasersFlow.canShoot && lasersFlow.flow.length <= LASER_MAX_AMOUNT && !interactDetector.explosion.isExplplode;
 }
 
+function initLevelInstance() {
+    level = new Level(START_LEVEL_NUMBER,
+        new TextProperties(LEVEL_MESSAGE + " " + (START_LEVEL_NUMBER + 1),
+            new Position(new Point(canvas.width / 2, canvas.height * 0.65), "center", "middle"),
+            new Style(BASE_SIZE, 1)
+        )
+    );
+}
+
+function updateLevelPhysicsAndRender() {
+    handlerNewLevelCreation();
+    updateLevelMessage();
+    updateOpacity(level.textProperties, LEVEL_ALPHA_TIME)
+    drawText(level.textProperties);
+}
+
+function handlerNewLevelCreation() {
+    if (asteroidsBelt.length === 0) {
+        level.number++;
+        level.textProperties.style.opacity = 1;
+        initAsteroidsBeltInstance(ASTEROIDS_NUMBER + level.number);
+    }
+}
+
+function updateLevelMessage() {
+    level.textProperties.message = LEVEL_MESSAGE + " " + (level.number + 1);
+}
+
+function updateOpacity(textProperties, alphaTime) {
+    if (textProperties.style.opacity > 0 && alphaTime !== 0) {
+        textProperties.style.opacity -= (1.0 / alphaTime) / FPS;
+    }
+}
+
 // RENDER FUNCTIONS
 function drawSpaceBg() {
     ctx.fillStyle = 'black';
@@ -683,6 +736,16 @@ function drawCircle(shape) {
     ctx.arc(point.x, point.y, radius, 0, 2 * Math.PI);
     ctx.closePath();
     ctx.stroke();
+}
+
+function drawText(textProperties) {
+    const position = textProperties.position;
+    const style = textProperties.style;
+    ctx.textAlign = position.align;
+    ctx.textBaseline = position.baseLine;
+    ctx.fillStyle = "rgba(255, 255, 255," + style.opacity + ")";
+    ctx.font = "small-caps " + style.size + "px dejavu sans mono";
+    ctx.fillText(textProperties.message, position.point.x, position.point.y)
 }
 
 // UTILS
