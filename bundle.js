@@ -1,6 +1,6 @@
 // GLOBAL VARIABLES
 let canvas, ctx;
-let rocketShip, asteroidsBelt, interactDetector, lasersFlow, level;
+let rocketShip, asteroidsBelt, interactDetector, lasersFlow, level, lives, gameOver;
 
 // CONSTANTS
 const FPS = 30;
@@ -30,13 +30,23 @@ const LASER_SPEED = 500;
 const LASER_DISTANCE = 0.6;
 
 const START_LEVEL_NUMBER = 0;
+const GAME_LIVES = 3;
 const LEVEL_MESSAGE = "LEVEL";
 const LEVEL_ALPHA_TIME = 2.5;
+
+const GAME_OVER_DURATION = 4;
+const GAME_OVER_MESSAGE = "GAME OVER";
+const GAME_OVER_ALPHA_TIME = 2.5;
 
 // DATA STRUCTURES
 function Level(number, textProperties) {
     this.number = number;
     this.textProperties = textProperties;
+}
+
+function GameOver(time, textParameters) {
+    this.time = time;
+    this.textParameters = textParameters;
 }
 
 function TextProperties(message, position, style) {
@@ -146,6 +156,7 @@ window.onload = function () {
 
 function startNewGame() {
     initRocketShipBaseInstance();
+    initLivesInstance();
     initLevelInstance();
     initAsteroidsBeltInstance(ASTEROIDS_NUMBER);
     initInteractDetectorInstance();
@@ -158,6 +169,7 @@ function update() {
     updateAsteroidsBeltPhysicsAndRender();
     updateRocketShipPhysicsAndRender();
     updateLasersFlowPhysicsAndRender();
+    drawLives();
     drawTestElements(rocketShip, asteroidsBelt);
 }
 
@@ -208,7 +220,7 @@ function initRocketShipBaseInstance() {
 
 function updateRocketShipPhysicsAndRender() {
     handleRocketShipPosition();
-    if (!isExplosionMode() && !isBlinkerOff()) {
+    if (!isGameOver() && !isExplosionMode() && !isBlinkerOff()) {
         if (isRocketShipThrust()) {
             drawThrustTriangles(rocketShip);
         }
@@ -353,7 +365,9 @@ function initInteractDetectorInstance() {
 }
 
 function updateModesLogic() {
-    if (isExplosionMode()) {
+    if (isGameOver()) {
+        handleGameOver();
+    } else if (isExplosionMode()) {
         handleExplosionMode();
     } else if (isBlinkerMode()) {
         handleBlinkerMode();
@@ -389,6 +403,7 @@ function handleExplosionMode() {
     } else {
         initRocketShipBaseInstance();
         initInteractDetectorInstance();
+        lives--;
     }
 }
 
@@ -540,6 +555,15 @@ function initLevelInstance() {
     );
 }
 
+function initGameOverInstance() {;
+    gameOver = new GameOver(GAME_OVER_DURATION * FPS,
+        new TextProperties(GAME_OVER_MESSAGE,
+            new Position(new Point(canvas.width / 2, canvas.height / 2), "center", "middle"),
+            new Style(BASE_SIZE, 1)
+        )
+    );
+}
+
 function updateLevelPhysicsAndRender() {
     handlerNewLevelCreation();
     updateLevelMessage();
@@ -559,6 +583,28 @@ function updateLevelMessage() {
     level.textProperties.message = LEVEL_MESSAGE + " " + (level.number + 1);
 }
 
+function initLivesInstance() {
+    lives = GAME_LIVES;
+}
+
+function handleGameOver() {
+    if (!gameOver) {
+        initGameOverInstance();
+    } else if (gameOver && gameOver.time > 0) {
+        gameOver.time--;
+        updateOpacity(gameOver.textParameters, GAME_OVER_ALPHA_TIME)
+        drawText(gameOver.textParameters);
+    } else {
+        gameOver = null;
+        startNewGame();
+    }
+
+}
+
+function isGameOver() {
+    return lives === 0;
+}
+
 function updateOpacity(textProperties, alphaTime) {
     if (textProperties.style.opacity > 0 && alphaTime !== 0) {
         textProperties.style.opacity -= (1.0 / alphaTime) / FPS;
@@ -572,12 +618,29 @@ function drawSpaceBg() {
     ctx.fill();
 }
 
-function drawRocketShipTriangle(rocketShipTriangle) {
+function drawLives() {
+    for (let i = 0; i < lives; i++) {
+        const liveTriangle = new RocketShip(
+            new Shape(
+                new Point(BASE_SIZE + (BASE_SIZE * 1.25 * i), BASE_SIZE),
+                BASE_SIZE / 2),
+                new Rotation(convertToRadians(ROCKET_SHIP_INITIAL_ANGLE)
+            )
+        );
+        if (i === lives - 1 && isExplosionMode()) {
+            drawRocketShipTriangle(liveTriangle, 'red');
+        } else {
+            drawRocketShipTriangle(liveTriangle);
+        }
+    }
+}
+
+function drawRocketShipTriangle(rocketShipTriangle, color = 'white') {
     const point = rocketShipTriangle.shape.point;
     const radius =  rocketShipTriangle.shape.radius;
     const angle = rocketShipTriangle.rotation.angle;
 
-    ctx.strokeStyle = 'white';
+    ctx.strokeStyle = color;
     ctx.fillStyle = 'black';
     ctx.lineWidth = BASE_SIZE / 15;
     ctx.beginPath();
