@@ -1,6 +1,6 @@
 // GLOBAL VARIABLES
 let canvas, ctx;
-let rocketShip, asteroidsBelt, interactDetector, lasersFlow, level, lives, gameOver;
+let rocketShip, asteroidsBelt, interactDetector, lasersFlow, level, lives, score, gameOver;
 
 // CONSTANTS
 const FPS = 30;
@@ -38,10 +38,21 @@ const GAME_OVER_DURATION = 4;
 const GAME_OVER_MESSAGE = "GAME OVER";
 const GAME_OVER_ALPHA_TIME = 2.5;
 
+const POINTS_LARGE = 25;
+const POINTS_MEDIUM = 50
+const POINTS_SMALL = 100;
+const SAVE_KEY_SCORE = 'score';
+const TOTAL_SCORE_MESSAGE = "BEST";
+
 // DATA STRUCTURES
 function Level(number, textProperties) {
     this.number = number;
     this.textProperties = textProperties;
+}
+
+function Score(current, max) {
+    this.current = current;
+    this.max = max;
 }
 
 function GameOver(time, textParameters) {
@@ -156,6 +167,7 @@ window.onload = function () {
 
 function startNewGame() {
     initRocketShipBaseInstance();
+    initScoreInstance();
     initLivesInstance();
     initLevelInstance();
     initAsteroidsBeltInstance(ASTEROIDS_NUMBER);
@@ -170,6 +182,7 @@ function update() {
     updateRocketShipPhysicsAndRender();
     updateLasersFlowPhysicsAndRender();
     drawLives();
+    drawAllScores();
     drawTestElements(rocketShip, asteroidsBelt);
 }
 
@@ -354,6 +367,7 @@ function destructAsteroid(index) {
             asteroidsBelt.push(createRandomAsteroid(point, radius));
         }
     }
+    handleScoreIncrease(asteroidsBelt[index].polygon.radius);
     asteroidsBelt.splice(index, 1);
 }
 
@@ -605,6 +619,28 @@ function isGameOver() {
     return lives === 0;
 }
 
+function initScoreInstance() {
+    score = new Score(0, localStorage.getItem(SAVE_KEY_SCORE) || 0)
+}
+
+function drawAllScores() {
+    score.max = Math.max(score.max, score.current);
+    drawTotalScore();
+    drawScore();
+}
+
+function handleScoreIncrease(asteroidRadius) {
+    if (asteroidRadius === BASE_SIZE * 2) {
+        score.current += POINTS_LARGE;
+    } else if (asteroidRadius === BASE_SIZE) {
+        score.current += POINTS_MEDIUM;
+    } else {
+        score.current += POINTS_SMALL
+    }
+    score.max = Math.max(score.max, score.current);
+    localStorage.setItem(SAVE_KEY_SCORE, score.max);
+}
+
 function updateOpacity(textProperties, alphaTime) {
     if (textProperties.style.opacity > 0 && alphaTime !== 0) {
         textProperties.style.opacity -= (1.0 / alphaTime) / FPS;
@@ -799,6 +835,22 @@ function drawCircle(shape) {
     ctx.arc(point.x, point.y, radius, 0, 2 * Math.PI);
     ctx.closePath();
     ctx.stroke();
+}
+
+function drawScore() {
+        drawText(new TextProperties(score.current,
+            new Position(
+                new Point(canvas.width - BASE_SIZE / 2, BASE_SIZE), "right", "middle"),
+            new Style(BASE_SIZE, 1)
+        ));
+}
+
+function drawTotalScore() {
+    drawText(new TextProperties(TOTAL_SCORE_MESSAGE + ": " + score.max,
+        new Position(
+            new Point(canvas.width / 2, BASE_SIZE), "center", "middle"),
+            new Style(BASE_SIZE, 1)
+        ));
 }
 
 function drawText(textProperties) {
