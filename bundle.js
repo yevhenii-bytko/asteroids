@@ -1,6 +1,6 @@
 // GLOBAL VARIABLES
 let canvas, ctx;
-let rocketShip, asteroidsBelt, interactDetector, lasersFlow, level, lives, score, gameOver;
+let rocketShip, asteroidsBelt, interactDetector, lasersFlow, level, lives, score, gameOver, soundsMap;
 
 // CONSTANTS
 const FPS = 30;
@@ -43,6 +43,12 @@ const POINTS_MEDIUM = 50
 const POINTS_SMALL = 100;
 const SAVE_KEY_SCORE = 'score';
 const TOTAL_SCORE_MESSAGE = "BEST";
+
+const SOUND_ON = true;
+const FX_LASER_PATH = 'sounds/laser.m4a';
+const FX_EXPLODE_PATH = 'sounds/explode.m4a';
+const FX_HIT_PATH = 'sounds/hit.m4a';
+const FX_THRUST_PATH = 'sounds/thrust.m4a';
 
 // DATA STRUCTURES
 function Level(number, textProperties) {
@@ -153,6 +159,27 @@ function Blinker(time, number) {
     this.number = number;
 }
 
+function Sound(src, maxStreams = 1, volume = 1.0) {
+    this.streamNum = 0;
+    this.streams = [];
+    for (let i = 0; i < maxStreams; i++) {
+        this.streams.push(new Audio(src))
+        this.streams[i].volume = volume;
+    }
+
+    this.play = function() {
+        if (SOUND_ON) {
+            this.streamNum = (this.streamNum + 1) % maxStreams;
+            this.streams[this.streamNum].play();
+        }
+    }
+
+    this.stop = function () {
+        this.streams[this.streamNum].pause();
+        this.streams[this.streamNum].currentTime = 0;
+    }
+}
+
 // ENTRY POINT
 window.onload = function () {
     canvas = document.getElementById("canvas");
@@ -161,6 +188,7 @@ window.onload = function () {
     document.addEventListener('keydown', keyDown);
     document.addEventListener('keyup', keyUp);
 
+    initSoundInstance();
     startNewGame();
     setInterval(update, FRAME_INTERVAL);
 }
@@ -220,6 +248,14 @@ function keyUp(e) {
 }
 
 // LOGIC FUNCTIONS
+function initSoundInstance() {
+    soundsMap = new Map()
+        .set('laser', new Sound(FX_LASER_PATH, 5, 0.05))
+        .set('explode', new Sound(FX_EXPLODE_PATH, 1, 0.1))
+        .set('hit', new Sound(FX_HIT_PATH, 5, 0.3))
+        .set('thrust', new Sound(FX_THRUST_PATH, 1, 0.3));
+}
+
 function initRocketShipBaseInstance() {
     rocketShip = new RocketShip(
         new Shape(
@@ -268,12 +304,15 @@ function thrustRocketShip() {
     if (isExplosionMode()) {
         thrustPoint.x =  0;
         thrustPoint.y = 0;
+        soundsMap.get('thrust').stop();
     } else if (isRocketShipThrust()) {
         thrustPoint.x +=  THRUST_FORCE * Math.cos(angle) / FPS;
         thrustPoint.y -= THRUST_FORCE * Math.sin(angle) / FPS;
+        soundsMap.get('thrust').play();
     } else {
         thrustPoint.x -= FRICTION * thrustPoint.x / FPS;
         thrustPoint.y -= FRICTION * thrustPoint.y / FPS;
+        soundsMap.get('thrust').stop();
     }
 }
 
@@ -396,6 +435,7 @@ function detectRocketShipCollision() {
     const index = findCollisionAsteroidIndex(point, radius);
     if (index !== -1) {
         interactDetector.explosion.isExplplode = true;
+        soundsMap.get('explode').play();
         destructAsteroid(index);
     }
 }
@@ -448,6 +488,7 @@ function initLasersFlowInstance() {
 function shootLaser() {
     if (isCanShoot()) {
         lasersFlow.flow.push(createLaser(rocketShip));
+        soundsMap.get('laser').play();
         denyShooting();
     }
 }
@@ -542,6 +583,7 @@ function handleLasersHits() {
         if (collisionIndex !== -1) {
             laser.isHit = true;
             laser.time = EXPLODE_LASER_DURATION * FPS;
+            soundsMap.get('hit').play();
             destructAsteroid(collisionIndex);
         }
     }
